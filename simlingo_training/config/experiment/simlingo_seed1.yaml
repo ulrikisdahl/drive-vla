@@ -40,7 +40,7 @@ data_module:
     use_safety_flag: True
 
 max_epochs: 15
-val_every_n_epochs: 2
+val_every_n_epochs: 3
 
 # debug: true
 gpus: 8

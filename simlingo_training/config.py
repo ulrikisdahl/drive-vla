@@ -42,8 +42,8 @@ class DrivingModelConfig:
 
 @dataclass
 class DatasetBaseConfig:
-    data_path: str = "/home/katrinrenz/coding/wayve_carla/database/expertv3_2*"
-    bucket_path: str = "data/buckets"
+    data_path: str = "database/simlingo" 
+    bucket_path: str = "database/bucketsv2_simlingo"
 
     cut_bottom_quarter: bool = False
     use_1d_wps: bool = False

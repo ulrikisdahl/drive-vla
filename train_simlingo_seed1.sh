@@ -1,27 +1,42 @@
 #!/bin/bash
-#SBATCH --job-name=slv2
+#SBATCH --job-name=simlingo_train
 #SBATCH --nodes=1
-#SBATCH --time=3-00:00
-#SBATCH --gres=gpu:8
-#SBATCH --cpus-per-task=64
-#SBATCH --output=/YOUR_PATH/results/logs/slv2_%a_%A.out  # File to which STDOUT will be written
-#SBATCH --error=/YOUR_PATH/results/logs/slv2_%a_%A.err   # File to which STDERR will be written
-#SBATCH --partition=YOUR_PARTITION
+#SBATCH --mem=256G
+#SBATCH --time=4:00:00
+#SBATCH --gres=gpu:a100:4
+#SBATCH --cpus-per-task=32
+#SBATCH --output=/cluster/home/ulrikyi/simlingo/results/logs/slurm.out  # File to which STDOUT will be written
+#SBATCH --error=/cluster/home/ulrikyi/simlingo/results/logs/slurm.err   # File to which STDERR will be written
+#SBATCH --partition=GPUQ
+#SBATCH --open-mode=truncate
+#SBATCH --account=share-ie-idi
 
 # print info about current job
 scontrol show job $SLURM_JOB_ID
 
 source ~/.bashrc
-conda activate ~/software/anaconda3/envs/simlingo
+module purge
+module load Anaconda3/2024.02-1
+conda activate simlingo
 
 pwd
+export CARLA_ROOT=/cluster/projects/vc/data/ad/open/write-folder/carla_0.9.15
 export PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla/":${PYTHONPATH}
-export WORK_DIR=~/coding/07_simlingo/simlingo_cleanup
+export WORK_DIR=/cluster/home/ulrikyi/simlingo
 export PYTHONPATH=$PYTHONPATH:${WORK_DIR}
 
 export MASTER_ADDR=localhost
 export NCCL_DEBUG=INFO
 
-export OMP_NUM_THREADS=64 # Limits pytorch to spawn at most num cpus cores threads
+#Authenticate with Hugging Face to access gated models (expects HF_TOKEN to be exported before sbatch)
+if [[ -n "${HF_TOKEN:-}" ]]; then
+    huggingface-cli login --token "${HF_TOKEN}" --add-to-git-credential
+else
+    echo "Warning: HF_TOKEN is not set, Hugging Face downloads may fail." >&2
+fi
+
+export OMP_NUM_THREADS=32 # Limits pytorch to spawn at most num cpus cores threads
 export OPENBLAS_NUM_THREADS=1  # Shuts off numpy multithreading, to avoid threads spawning other threads.
-WANDB__SERVICE_WAIT=300 python simlingo_training/train.py experiment=simlingo_seed1 data_module.batch_size=8 gpus=8 name=simlingo_seed1
+WANDB__SERVICE_WAIT=300 python simlingo_training/train.py experiment=simlingo_seed1 data_module.batch_size=8 gpus=4 name=simlingo_full_4xA100_buckets
+
+#WANDB_SERVICE_WAIT=300 python simlingo_training/train.py experiment=simlingo_seed1 data_module.batch_size=12 gpus=8 name=simlingo_full_8xA100 resume=True resume_path=/cluster/home/ulrikyi/simlingo/outputs/2025_12_03_14_45_14_simlingo_full_8xA100/checkpoints/last.ckpt

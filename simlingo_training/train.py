@@ -28,7 +28,17 @@ def main(cfg: TrainConfig):
         os.environ["WANDB_MODE"] = "offline"
     
     cfg.wandb_name = f"{cfg.wandb_name}_{cfg.name}"
-    
+
+
+    resume_path = cfg.resume_path
+    valid_path_test = False
+    if resume_path is not None and os.path.exists(resume_path) and cfg.resume:
+        valid_path_test = True
+    else:
+        valid_path_test = False
+    with open("valid_path_test.txt", "w") as f:
+        f.write(str(valid_path_test))
+
     processor = AutoProcessor.from_pretrained(cfg.model.vision_model.variant, trust_remote_code=True)
     model_type_name = cfg.model.vision_model.variant.split('/')[1]
     cache_dir = None #f"pretrained/{(model_type_name)}"
@@ -77,11 +87,17 @@ def main(cfg: TrainConfig):
         resume_wandb = True
     elif resume_path is not None and os.path.exists(resume_path) and cfg.resume:
         resume_wandb = True
-
+    
+    valid_path_test = False
     if resume_path is not None and os.path.exists(resume_path) and cfg.resume:
         resume_path = resume_path
+        valid_path_test = True
     else:
+        valid_path_test = False
         resume_path = None
+
+    with open("valid_path_test.txt", "w") as f:
+        f.write(str(valid_path_test))
 
     # setup lightning logger
     loggers = []
@@ -111,7 +127,7 @@ def main(cfg: TrainConfig):
         dirpath="./checkpoints",
         filename="{epoch:03d}",
         save_last=True,
-        every_n_epochs=cfg.val_every_n_epochs,
+        every_n_epochs=1,  #cfg.val_every_n_epochs,
         # every_n_train_steps=cfg.val_check_interval,
     )
 
