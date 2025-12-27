@@ -64,12 +64,12 @@ def main(cfg: TrainConfig):
 
     # if folder for this experiment does not exist set resume to true
     # to create necessary folders to resume wandb logging later
-    if not os.path.exists(resume_path):
+    if resume_path and not os.path.exists(resume_path):
         resume_wandb = True
-    elif os.path.exists(resume_path) and cfg.resume:
+    elif cfg.resume and os.path.exists(resume_path):
         resume_wandb = True
 
-    if os.path.exists(resume_path) and cfg.resume:
+    if cfg.resume and os.path.exists(resume_path):
         resume_path = resume_path
     else:
         resume_path = None

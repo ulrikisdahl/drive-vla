@@ -55,8 +55,8 @@ class DrivingModelConfig:
 class DrivingDataModuleConfig:
     batch_size: int = 16
     num_workers: int = 10
-    data_path: str = "database/simlingo"
-    bucket_path: str = "database/bucketsv2_simlingo"
+    data_path: str = "/cluster/projects/vc/data/ad/open/write-folder/simlingo/database/simlingo"
+    bucket_path: str = "database/bucketsv2_simlingo" #Dont know what this is?
     encoder: str = "llavanext" # "resnet"
     train_partitions: Optional[Dict[str, float]] = None
     cut_bottom_quarter: bool = False

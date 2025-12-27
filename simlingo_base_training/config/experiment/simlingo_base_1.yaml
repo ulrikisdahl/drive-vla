@@ -16,8 +16,8 @@ model:
     downsample_feature_grid_factor: 2
 
 data_module:
-  data_path: database/simlingo
-  bucket_path: database/bucketsv2_simlingo
+  data_path: database/simlingo #prepended workdir 
+  bucket_path: database/bucketsv2_simlingo #prepended workdir
   batch_size: 28
   num_workers: 10
   route_as: target_point
@@ -33,7 +33,7 @@ data_module:
 max_epochs: 30
 seed: 42
 gpus: 8
-val_every_n_epochs: 2
+val_every_n_epochs: 1 #determines how often we save checkpoints
 name: simlingo_base_seed_42
 
 hydra:

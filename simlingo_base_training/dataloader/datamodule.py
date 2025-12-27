@@ -62,7 +62,7 @@ class DataModule(LightningDataModule):
                     self.llm_tokenizer.pad_token = "[PAD]"
 
             else:
-                self.llm_tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf", token = "ADD_YOUR_TOKEN")
+                self.llm_tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf", token = "HF_TOKEN")
                 self.llm_tokenizer.add_eos_token = True
                 self.llm_tokenizer.add_bos_token = True
                 if self.llm_tokenizer.pad_token is None:
@@ -85,23 +85,37 @@ class DataModule(LightningDataModule):
                 sample_weights = [1.0]
 
             datasets = {}
-            for bucket, bucket_proportion in zip(bucket_list, bucket_proportions):
-                datasets[bucket] = CARLA_Data(
+            #for bucket, bucket_proportion in zip(bucket_list, bucket_proportions):
+            #    print(f"BUCKET: {bucket}")
+            #    print(f"Proportions: {bucket_proportion}")
+            #    datasets[bucket] = CARLA_Data(
+            #        split="train",
+            #        bucket_name=bucket,
+            #        bucket_proportion=bucket_proportion,
+            #        **self.cfg,
+            #    )
+            datasets["all"] = CARLA_Data(
                     split="train",
-                    bucket_name=bucket,
-                    bucket_proportion=bucket_proportion,
+                    bucket_name="all",
                     **self.cfg,
-                )
+            )   
 
-            self.train_dataset = torch.utils.data.ConcatDataset([datasets[bucket] for bucket in bucket_list])
-            weights_train = [[sample_weights[i]] * datasets[bucket].__len__() for i, bucket in enumerate(bucket_list)]
-            weights_train = list(itertools.chain.from_iterable(weights_train))
-            num_samples_all = [datasets[bucket].__len__() // sample_weights[i] for i, bucket in enumerate(bucket_list)]
-            num_samples = int(min(num_samples_all))
-            print(f"Num samples: {num_samples}")
-            print(f"Num samples all: {datasets['all'].__len__()}")
-            # num_samples = int(datasets[bucket_list[-1]].__len__()//sample_weights[-1])
-            self.sampler_train = torch.utils.data.WeightedRandomSampler(weights=weights_train, num_samples=num_samples, replacement=True)
+           # self.train_dataset = torch.utils.data.ConcatDataset([datasets[bucket] for bucket in bucket_list])
+           # weights_train = [[sample_weights[i]] * datasets[bucket].__len__() for i, bucket in enumerate(bucket_list)]
+           # weights_train = list(itertools.chain.from_iterable(weights_train))
+           # num_samples_all = [datasets[bucket].__len__() // sample_weights[i] for i, bucket in enumerate(bucket_list)]
+           # num_samples = int(min(num_samples_all))
+           # print(f"Num samples: {num_samples}")
+           # print(f"Num samples all: {datasets['all'].__len__()}")
+           # # num_samples = int(datasets[bucket_list[-1]].__len__()//sample_weights[-1])
+           # self.sampler_train = torch.utils.data.WeightedRandomSampler(weights=weights_train, num_samples=num_samples, replacement=True)
+
+            self.train_dataset = torch.utils.data.ConcatDataset([datasets['all']])
+            weights_train = [1.0] * len(datasets['all'])  # one weight per sample
+            num_samples = len(datasets['all'])            # or pick a smaller epoch size if you wish
+            self.sampler_train = torch.utils.data.WeightedRandomSampler(
+                weights=weights_train, num_samples=num_samples, replacement=True
+            )
 
             self.val_dataset = CARLA_Data(
                 split="val",

@@ -118,6 +118,8 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
 
 
         route_dirs = glob.glob(f"{repo_path}/" + self.data_path + '/data/simlingo/*/*/*/Town*')
+        print()
+        print(f"ROUTE DIRS PATH: {repo_path}///{self.data_path}")
         print(f'Found {len(route_dirs)} routes in {repo_path + self.data_path}')
         
         if not self.use_old_towns:
