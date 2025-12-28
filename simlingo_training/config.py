@@ -72,6 +72,9 @@ class DatasetBaseConfig:
 
     route_as: str = 'target_point_command' # target_point_command, target_point, command
     use_lmdrive_commands: bool = True
+    use_disk_cache: bool = True 
+    dataset_cache_name: str = "simlingo_dataset_cache"
+    dataset_cache_size_gb: float = 1600.0
 
 @dataclass
 class DrivingDatasetConfig:

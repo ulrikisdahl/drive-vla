@@ -42,12 +42,27 @@ def main(cfg: TrainConfig):
     processor = AutoProcessor.from_pretrained(cfg.model.vision_model.variant, trust_remote_code=True)
     model_type_name = cfg.model.vision_model.variant.split('/')[1]
     cache_dir = None #f"pretrained/{(model_type_name)}"
-    
+
+    data_cache = None
+    data_cache_dir = None
+    data_cache_size_bytes = None
+    if cfg.data_module.base_dataset.use_disk_cache:
+        from diskcache import Cache
+        data_cache_dir = os.path.join("/tmp", cfg.data_module.base_dataset.dataset_cache_name)
+        data_cache_size_bytes = int(cfg.data_module.base_dataset.dataset_cache_size_gb * (1024 ** 3))
+        data_cache = Cache(data_cache_dir, size_limit=data_cache_size_bytes)
+        print(f"Disk cache enabled: True ({data_cache_dir}, size_limit={data_cache_size_bytes} bytes)")
+    else:
+        print("Disk cache enabled: False")
+
     data_module = hydra.utils.instantiate(
         cfg.data_module, 
         processor=processor,
         encoder_variant=cfg.model.vision_model.variant,
         llm_variant=cfg.model.language_model.variant,
+        data_cache=data_cache,
+        data_cache_dir=data_cache_dir,
+        data_cache_size_bytes=data_cache_size_bytes,
         _recursive_=False
     )
     

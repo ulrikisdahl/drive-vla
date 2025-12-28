@@ -4,14 +4,10 @@ partially taken from https://github.com/autonomousvision/carla_garage/blob/main/
 (MIT licence)
 """
 
-import os
-import ujson
-import json
 import numpy as np
 import random
 import cv2
 import re
-import gzip
 
 import torch
 from simlingo_training.utils.custom_types import DatasetOutput
@@ -88,13 +84,13 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
             if 'validation_' in commentary_file_path:
                 commentary_exists = False
             else:
-                try:
-                    with gzip.open(commentary_file_path, 'rt') as f:
-                        commentary_file = ujson.load(f)
-                        commentary_exists = True
-                except (FileNotFoundError, ujson.JSONDecodeError):
-                    commentary_exists = False
-                    commentary_file = None
+                commentary_file = self._load_json_gz(
+                    commentary_file_path,
+                    allow_missing=True,
+                    allow_decode_error=True,
+                    cache_key_prefix="commentary",
+                )
+                commentary_exists = commentary_file is not None
 
                 if commentary_file is not None:
 
@@ -122,13 +118,13 @@ class Data_Driving(BaseDataset):  # pylint: disable=locally-disabled, invalid-na
             if 'validation_' in qa_path:
                 qa_exists = False
             else:
-                try:
-                    with gzip.open(qa_path, 'rt') as f:
-                        qa = ujson.load(f)
-                    qa_exists = True
-                except (FileNotFoundError, ujson.JSONDecodeError):
-                    qa_exists = False
-                    qa = None
+                qa = self._load_json_gz(
+                    qa_path,
+                    allow_missing=True,
+                    allow_decode_error=True,
+                    cache_key_prefix="qa",
+                )
+                qa_exists = qa is not None
 
             if qa_exists:
                 qas = qa['QA']

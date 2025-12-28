@@ -33,6 +33,7 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
     """
     Base class for the dataset.
     """
+    _CACHE_MISS_SENTINEL = "__cache_miss__"
 
     def __init__(self,
             dreamer = False,
@@ -41,6 +42,10 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
         ):
         for key, value in cfg.items():
             setattr(self, key, value)
+        if not hasattr(self, "data_cache"):
+            self.data_cache = None
+        if self.data_cache is not None and not hasattr(self, "data_cache_dir"):
+            self.data_cache_dir = self.data_cache.directory
 
         self.tfs = image_augmenter(prob=self.img_augmentation_prob)
 
@@ -354,6 +359,72 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
     def __len__(self):
         """Returns the length of the dataset. """
         return self.images.shape[0]
+
+    def _get_cache(self):
+        cache = getattr(self, "data_cache", None)
+        if cache is not None:
+            return cache
+        if not getattr(self, "use_disk_cache", False):
+            return None
+        cache_dir = getattr(self, "data_cache_dir", None)
+        if cache_dir is None:
+            return None
+        try:
+            from diskcache import Cache
+        except ImportError:
+            return None
+        size_limit = getattr(self, "data_cache_size_bytes", None)
+        cache = Cache(cache_dir, size_limit=size_limit)
+        self.data_cache = cache
+        return cache
+
+    def _load_json_gz(self, file_path, allow_missing=False, allow_decode_error=False, cache_key_prefix="json_gz"):
+        cache = self._get_cache()
+        cache_key = f"{cache_key_prefix}:{file_path}"
+        if cache is not None:
+            cached = cache.get(cache_key, default=None)
+            if cached is not None:
+                if cached == self._CACHE_MISS_SENTINEL:
+                    return None
+                return cached
+        try:
+            with gzip.open(file_path, 'rt') as f1:
+                data = ujson.load(f1)
+        except FileNotFoundError:
+            if cache is not None and allow_missing:
+                cache.set(cache_key, self._CACHE_MISS_SENTINEL)
+            if allow_missing:
+                return None
+            raise
+        except ujson.JSONDecodeError:
+            if cache is not None and (allow_missing or allow_decode_error):
+                cache.set(cache_key, self._CACHE_MISS_SENTINEL)
+            if allow_decode_error:
+                return None
+            raise
+        if cache is not None:
+            cache.set(cache_key, data)
+        return data
+
+    def _load_image_cached(self, image_path):
+        cache = self._get_cache()
+        cache_key = f"image:{image_path}"
+        if cache is not None:
+            cached = cache.get(cache_key, default=None)
+            if cached is not None:
+                image_bytes = np.frombuffer(cached, dtype=np.uint8)
+                decoded = cv2.imdecode(image_bytes, cv2.IMREAD_COLOR)
+                if decoded is not None:
+                    return cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB)
+        images_i = cv2.imread(image_path, cv2.IMREAD_COLOR)
+        if images_i is None:
+            print(f"File not found: {image_path}")
+            raise FileNotFoundError
+        if cache is not None:
+            success, encoded = cv2.imencode(".png", images_i)
+            if success:
+                cache.set(cache_key, encoded.tobytes())
+        return cv2.cvtColor(images_i, cv2.COLOR_BGR2RGB)
     
 
     def load_current_and_future_measurements(self, measurements, sample_start):
@@ -366,9 +437,11 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
         # Since we load measurements for future time steps, we load and store them separately
         for i in range(self.hist_len):
             measurement_file = str(measurements[0], encoding='utf-8') + (f'/{(sample_start + i):04}.json.gz')
-
-            with gzip.open(measurement_file, 'rt') as f1:
-                measurements_i = ujson.load(f1)
+            measurements_i = self._load_json_gz(
+                measurement_file,
+                allow_missing=False,
+                cache_key_prefix="measurement",
+            )
             loaded_measurements.append(measurements_i)
 
         end = self.pred_len + self.hist_len
@@ -377,9 +450,13 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
         for i in range(start, end):
             try:
                 measurement_file = str(measurements[0], encoding='utf-8') + (f'/{(sample_start + i):04}.json.gz')
-
-                with gzip.open(measurement_file, 'rt') as f1:
-                    measurements_i = ujson.load(f1)
+                measurements_i = self._load_json_gz(
+                    measurement_file,
+                    allow_missing=True,
+                    cache_key_prefix="measurement",
+                )
+                if measurements_i is None:
+                    raise FileNotFoundError
                 loaded_measurements.append(measurements_i)
             except FileNotFoundError:
                 # If the file is not found, we just use the last available measurement
@@ -449,13 +526,7 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
             images_path = str(images[i], encoding='utf-8')
             if augment_sample:
                 images_path = images_path.replace('rgb', 'rgb_augmented')
-
-            if not os.path.isfile(images_path):
-                print(f"File not found: {images_path}")
-                raise FileNotFoundError
-
-            images_i = cv2.imread(images_path, cv2.IMREAD_COLOR)
-            images_i = cv2.cvtColor(images_i, cv2.COLOR_BGR2RGB)
+            images_i = self._load_image_cached(images_path)
 
             if self.img_augmentation: # and random.random() <= self.img_augmentation_prob:
                 images_i = self.tfs(image=images_i)

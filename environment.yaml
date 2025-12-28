@@ -88,6 +88,7 @@ dependencies:
     - debugpy==1.8.1
     - deepdiff==6.7.1
     - deepspeed==0.16.2
+    - diskcache==5.4.0
     - dictor==0.1.12
     - distro==1.9.0
     - docker-pycreds==0.4.0

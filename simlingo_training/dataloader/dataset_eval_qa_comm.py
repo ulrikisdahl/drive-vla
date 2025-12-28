@@ -3,12 +3,10 @@ Code that loads the dataset for training.
 partially taken from https://github.com/autonomousvision/carla_garage/blob/main/team_code/data.py
 (MIT licence)
 """
-import ujson
 import numpy as np
 import random
 import cv2
 import re
-import gzip
 
 from simlingo_training.utils.custom_types import DatasetOutput
 from simlingo_training.dataloader.dataset_base import BaseDataset
@@ -77,13 +75,13 @@ class Data_Eval(BaseDataset):  # pylint: disable=locally-disabled, invalid-name
         commentary = ''
         if self.use_commentary:
             commentary_file_path = measurement_file_current.replace('measurements', 'commentary').replace('data/', 'commentary/') # TODO: move to config
-            try:
-                with gzip.open(commentary_file_path, 'rt') as f:
-                    commentary_file = ujson.load(f)
-                    commentary_exists = True
-            except (FileNotFoundError, ujson.JSONDecodeError):
-                commentary_exists = False
-                commentary_file = None
+            commentary_file = self._load_json_gz(
+                commentary_file_path,
+                allow_missing=True,
+                allow_decode_error=True,
+                cache_key_prefix="commentary",
+            )
+            commentary_exists = commentary_file is not None
 
             if commentary_file is not None:
 
@@ -109,13 +107,13 @@ class Data_Eval(BaseDataset):  # pylint: disable=locally-disabled, invalid-name
         qa_chosen = None
         if self.use_qa:
             qa_path = measurement_file_current.replace('measurements', 'vqa').replace('data/', 'drivelm/')
-            try:
-                with gzip.open(qa_path, 'rt') as f:
-                    qa = ujson.load(f)
-                qa_exists = True
-            except (FileNotFoundError, ujson.JSONDecodeError):
-                qa_exists = False
-                qa = None
+            qa = self._load_json_gz(
+                qa_path,
+                allow_missing=True,
+                allow_decode_error=True,
+                cache_key_prefix="qa",
+            )
+            qa_exists = qa is not None
 
             if qa_exists:
                 qas = qa['QA']
