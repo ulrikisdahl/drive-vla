@@ -196,6 +196,20 @@ We provide a SLURM script to start training: [train_simlingo_seed1.sh](train_sim
 
 With the default config, the training logs to Wandb. Login is required. We also include a visualization callback that plots ground truth and predicted waypoints during training.
 
+To enable the disk-backed dataset cache on slow filesystems, pass the following Hydra overrides (cache lives in `/tmp/<dataset_cache_name>` on each node):
+```bash
+python simlingo_training/train.py \
+  data_module.base_dataset.use_disk_cache=true \
+  data_module.base_dataset.dataset_cache_name=simlingo_cache \
+  data_module.base_dataset.dataset_cache_size_gb=1600
+```
+
+To pre-stage the full dataset into `/tmp` before training (no caching), pass:
+```bash
+python simlingo_training/train.py \
+  data_module.base_dataset.use_data_prestage=true \
+  data_module.base_dataset.dataset_prestage_name=simlingo_prestage
+```
 
 ## Evaluation
 
@@ -260,4 +274,3 @@ Bench2Drive benchmark:
 ## Other Resources
 - [tuPlan garage](https://github.com/autonomousvision/tuplan_garage) | [CARLA garage](https://github.com/autonomousvision/carla_garage) | [Survey on E2EAD](https://github.com/OpenDriveLab/End-to-end-Autonomous-Driving)
 - [DriveLM](https://github.com/OpenDriveLab/DriveLM/tree/main) | [PlanT](https://github.com/autonomousvision/plant) | [KING](https://github.com/autonomousvision/king) | [TransFuser](https://github.com/autonomousvision/transfuser) | [NEAT](https://github.com/autonomousvision/neat)
-

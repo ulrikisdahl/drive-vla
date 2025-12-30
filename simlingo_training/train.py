@@ -1,4 +1,5 @@
 import os
+import shutil
 import hydra
 
 from omegaconf import OmegaConf
@@ -16,6 +17,8 @@ from simlingo_training.utils.logging_project import setup_logging, sync_wandb
 
 from simlingo_training.config import TrainConfig
 from simlingo_training.callbacks.visualise import VisualiseCallback
+from hydra.utils import get_original_cwd
+from tqdm import tqdm
 
 
 @hydra.main(config_path=f"config", config_name="config", version_base="1.1")
@@ -42,6 +45,61 @@ def main(cfg: TrainConfig):
     processor = AutoProcessor.from_pretrained(cfg.model.vision_model.variant, trust_remote_code=True)
     model_type_name = cfg.model.vision_model.variant.split('/')[1]
     cache_dir = None #f"pretrained/{(model_type_name)}"
+
+    if cfg.data_module.base_dataset.use_data_prestage:
+        repo_root = get_original_cwd()
+        staged_root = os.path.join("/tmp", cfg.data_module.base_dataset.dataset_prestage_name)
+
+        def _resolve_src_path(path_value):
+            if os.path.isabs(path_value):
+                return path_value
+            return os.path.join(repo_root, path_value)
+
+        def _iter_files_with_sizes(root_dir):
+            for root, _, files in os.walk(root_dir):
+                for name in files:
+                    src_path = os.path.join(root, name)
+                    try:
+                        size = os.path.getsize(src_path)
+                    except OSError:
+                        size = 0
+                    yield src_path, size
+
+        def _copytree_with_progress(src, dst):
+            os.makedirs(dst, exist_ok=True)
+            files = list(_iter_files_with_sizes(src))
+            total_bytes = sum(size for _, size in files)
+            with tqdm(total=total_bytes, unit="B", unit_scale=True, ascii=True) as pbar:
+                for src_path, size in files:
+                    rel_path = os.path.relpath(src_path, src)
+                    dst_path = os.path.join(dst, rel_path)
+                    os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+                    shutil.copy2(src_path, dst_path)
+                    pbar.update(size)
+
+        def _stage_path(path_value):
+            src = _resolve_src_path(path_value)
+            dst = os.path.join(staged_root, path_value.lstrip(os.sep))
+            if os.path.isdir(dst) and not cfg.data_module.base_dataset.dataset_prestage_overwrite:
+                print(f"Prestage: using existing {dst}")
+                return dst
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            if os.path.isdir(dst):
+                shutil.rmtree(dst)
+            print(f"Prestage: copying {src} -> {dst}")
+            _copytree_with_progress(src, dst)
+            return dst
+
+        staged_data_path = _stage_path(cfg.data_module.base_dataset.data_path)
+        staged_bucket_path = _stage_path(cfg.data_module.base_dataset.bucket_path)
+        cfg.data_module.base_dataset.data_path = staged_data_path
+        cfg.data_module.base_dataset.bucket_path = staged_bucket_path
+        print(f"Prestage enabled: True ({staged_root})")
+    else:
+        print("Prestage enabled: False")
+    if cfg.data_module.base_dataset.use_data_prestage and cfg.data_module.base_dataset.use_disk_cache:
+        cfg.data_module.base_dataset.use_disk_cache = False
+        print("Disk cache disabled because pre-staging is enabled.")
 
     data_cache = None
     data_cache_dir = None

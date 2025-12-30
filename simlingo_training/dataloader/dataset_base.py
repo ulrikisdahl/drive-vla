@@ -70,6 +70,8 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
         fail_reasons = {}
 
         repo_path = get_original_cwd()
+        self.data_path_resolved = self._resolve_repo_path(repo_path, self.data_path)
+        self.bucket_path_resolved = self._resolve_repo_path(repo_path, self.bucket_path)
         
         # load templates
         template_file = f"{repo_path}/data/augmented_templates/commentary_augmented.json"
@@ -146,7 +148,7 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
 
 
         if not self.bucket_name == "all":
-            with open(f"{repo_path}/" + self.bucket_path + '/buckets_paths.pkl', 'rb') as f:
+            with open(self.bucket_path_resolved + '/buckets_paths.pkl', 'rb') as f:
                 bucket_dict = pkl.load(f)
 
             bucket_run_ids = None
@@ -184,23 +186,22 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
                     run_id_path = Path(run_id)
                     run_id_parent = run_id_path.parent
                     run_id_name = run_id_path.name
-                    run_id_absolut = str(run_id_parent)
-                    run_id_absolut = f"{repo_path}/{str(run_id_parent)}"
+                    run_id_absolut = self._resolve_repo_path(repo_path, str(run_id_parent))
                     if run_id_absolut not in run_id_dict:
                         run_id_dict[run_id_absolut] = [run_id_name]
                     else:
                         run_id_dict[run_id_absolut].append(run_id_name)
 
 
-        route_dirs = glob.glob(f"{repo_path}/" + self.data_path + '/data/simlingo/*/*/*/Town*')
-        print(f'Found {len(route_dirs)} routes in {repo_path + self.data_path}')
+        route_dirs = glob.glob(self.data_path_resolved + '/data/simlingo/*/*/*/Town*')
+        print(f'Found {len(route_dirs)} routes in {self.data_path_resolved}')
         
         if not self.use_old_towns:
             route_dirs = [route_dir for route_dir in route_dirs if 'lb1_split' not in route_dir]
-            print(f'Found {len(route_dirs)} routes in {repo_path + self.data_path} after filtering out old towns')
+            print(f'Found {len(route_dirs)} routes in {self.data_path_resolved} after filtering out old towns')
         elif self.use_only_old_towns or self.bucket_name == "old_towns":
             route_dirs = [route_dir for route_dir in route_dirs if 'lb1_split' in route_dir]
-            print(f'Found {len(route_dirs)} routes in {repo_path + self.data_path} after filtering out non old towns')
+            print(f'Found {len(route_dirs)} routes in {self.data_path_resolved} after filtering out non old towns')
         
 
         random.shuffle(route_dirs)
@@ -350,7 +351,7 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
 
         self.sample_start = np.array(self.sample_start)
         # if rank == 0:
-        print(f'[{self.split} samples]: Loading {len(self.images)} images from {self.data_path} for bucket {self.bucket_name}')
+        print(f'[{self.split} samples]: Loading {len(self.images)} images from {self.data_path_resolved} for bucket {self.bucket_name}')
         print('Total amount of routes:', total_routes)
         print('Crashed routes:', crashed_routes)
         print('Perfect routes:', perfect_routes)
@@ -359,6 +360,11 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
     def __len__(self):
         """Returns the length of the dataset. """
         return self.images.shape[0]
+
+    def _resolve_repo_path(self, repo_path, path_value):
+        if os.path.isabs(path_value):
+            return path_value
+        return f"{repo_path}/{path_value}"
 
     def _get_cache(self):
         cache = getattr(self, "data_cache", None)
