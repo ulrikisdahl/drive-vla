@@ -4,6 +4,7 @@
 #SBATCH --mem=256G
 #SBATCH --time=26:00:00
 #SBATCH --gres=gpu:a100:8
+#SBATCH --constraint="gpu80g"
 #SBATCH --cpus-per-task=32
 #SBATCH --output=/cluster/home/ulrikyi/simlingo/results/logs/slurm.out  # File to which STDOUT will be written
 #SBATCH --error=/cluster/home/ulrikyi/simlingo/results/logs/slurm.err   # File to which STDERR will be written
@@ -37,6 +38,6 @@ fi
 
 export OMP_NUM_THREADS=32 # Limits pytorch to spawn at most num cpus cores threads
 export OPENBLAS_NUM_THREADS=1  # Shuts off numpy multithreading, to avoid threads spawning other threads.
-WANDB__SERVICE_WAIT=300 python simlingo_training/train.py experiment=simlingo_seed1 data_module.batch_size=12 gpus=8 name=simlingo_full_4xA100_buckets datamodule.base_dataset.use_disk_cache=True datamodule.base_dataset.dataset_cache_name=simlingo_cache datamodule.basedataset.dataset_cache_size_gb=1600
+WANDB__SERVICE_WAIT=300 python simlingo_training/train.py experiment=simlingo_seed1 data_module.batch_size=12 gpus=8 name=simlingo_full_4xA100_buckets data_module.base_dataset.use_disk_cache=True data_module.base_dataset.dataset_cache_name=simlingo_cache data_module.base_dataset.dataset_cache_size_gb=1600
 
 #WANDB_SERVICE_WAIT=300 python simlingo_training/train.py experiment=simlingo_seed1 data_module.batch_size=12 gpus=8 name=simlingo_full_8xA100 resume=True resume_path=/cluster/home/ulrikyi/simlingo/outputs/2025_12_03_14_45_14_simlingo_full_8xA100/checkpoints/last.ckpt
