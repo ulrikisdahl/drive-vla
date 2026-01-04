@@ -123,7 +123,21 @@ def main(cfg: TrainConfig):
         data_cache_size_bytes=data_cache_size_bytes,
         _recursive_=False
     )
-    
+
+    if cfg.data_module.base_dataset.use_disk_cache and cfg.data_module.base_dataset.cache_warmup:
+        if getattr(data_module, "train_dataset", None) is None:
+            data_module.setup("fit")
+        train_dataset = data_module.train_dataset
+        if train_dataset is not None:
+            warmup_total = len(train_dataset)
+            warmup_limit = cfg.data_module.base_dataset.cache_warmup_num_samples
+            if warmup_limit is not None:
+                warmup_total = min(warmup_total, warmup_limit)
+            print(f"Cache warmup: start (samples={warmup_total})")
+            for idx in tqdm(range(warmup_total), unit="sample", ascii=True):
+                _ = train_dataset[idx]
+            print("Cache warmup: done")
+
     model = hydra.utils.instantiate(
         cfg.model,
         cfg_data_module=cfg.data_module,

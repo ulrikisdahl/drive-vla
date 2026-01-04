@@ -75,6 +75,8 @@ class DatasetBaseConfig:
     use_disk_cache: bool = True 
     dataset_cache_name: str = "simlingo_dataset_cache"
     dataset_cache_size_gb: float = 1600.0
+    cache_warmup: bool = False
+    cache_warmup_num_samples: Optional[int] = None
     use_data_prestage: bool = False
     dataset_prestage_name: str = "simlingo_prestage"
     dataset_prestage_overwrite: bool = False
