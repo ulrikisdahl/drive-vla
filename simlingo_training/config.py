@@ -81,6 +81,10 @@ class DatasetBaseConfig:
     dataset_prestage_name: str = "simlingo_prestage"
     dataset_prestage_overwrite: bool = False
 
+    # LMDB options
+    use_lmdb: bool = False
+    lmdb_path: str = ""
+
 @dataclass
 class DrivingDatasetConfig:
     # base: DatasetBaseConfig = field(default_factory=DatasetBaseConfig)

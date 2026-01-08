@@ -47,6 +47,14 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
         if self.data_cache is not None and not hasattr(self, "data_cache_dir"):
             self.data_cache_dir = self.data_cache.directory
 
+        # Initialize LMDB if enabled
+        self.lmdb_env = None
+        self.lmdb_txn = None
+        if getattr(self, "use_lmdb", False) and getattr(self, "lmdb_path", ""):
+            import lmdb
+            self.lmdb_env = lmdb.open(self.lmdb_path, readonly=True, lock=False, readahead=True, meminit=False)
+            self.lmdb_txn = self.lmdb_env.begin(buffers=True)
+
         self.tfs = image_augmenter(prob=self.img_augmentation_prob)
 
         filter_infractions_per_route = True
@@ -389,8 +397,19 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
 
     def _load_json_gz(self, file_path, allow_missing=False, allow_decode_error=False, cache_key_prefix="json_gz"):
         """
-        diskcache implementation
+        Load gzipped JSON file from LMDB, diskcache, or filesystem.
         """
+        # Try LMDB first
+        if self.lmdb_txn is not None:
+            data = self.lmdb_txn.get(file_path.encode())
+            if data is not None:
+                return ujson.loads(gzip.decompress(bytes(data)))
+            elif allow_missing:
+                return None
+            else:
+                raise FileNotFoundError(f"Key not found in LMDB: {file_path}")
+
+        # Fall back to diskcache
         cache = self._get_cache()
         cache_key = f"{cache_key_prefix}:{file_path}"
         if cache is not None:
@@ -420,8 +439,20 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
 
     def _load_image_cached(self, image_path):
         """
-        diskcache implementation
+        Load image from LMDB, diskcache, or filesystem.
         """
+        # Try LMDB first
+        if self.lmdb_txn is not None:
+            data = self.lmdb_txn.get(image_path.encode())
+            if data is not None:
+                image_bytes = np.frombuffer(bytes(data), dtype=np.uint8)
+                decoded = cv2.imdecode(image_bytes, cv2.IMREAD_COLOR)
+                if decoded is not None:
+                    return cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB)
+            print(f"Key not found in LMDB: {image_path}")
+            raise FileNotFoundError(f"Key not found in LMDB: {image_path}")
+
+        # Fall back to diskcache
         cache = self._get_cache()
         cache_key = f"image:{image_path}"
         if cache is not None:

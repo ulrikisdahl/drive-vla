@@ -39,6 +39,9 @@ data_module:
 
     use_safety_flag: True
 
+    use_lmdb: True
+    lmdb_path: /path/to/dataset
+
 max_epochs: 15
 val_every_n_epochs: 3
 
