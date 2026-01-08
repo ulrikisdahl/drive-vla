@@ -27,6 +27,9 @@ if __name__ == "__main__":
     data_module_cfg = OmegaConf.to_container(cfg.data_module, resolve=True)
     base_dataset_cfg = OmegaConf.to_container(cfg.data_module.base_dataset, resolve=True)
 
+    # Disable LMDB loading - we're creating it, not reading from it
+    base_dataset_cfg["use_lmdb"] = False
+
     print("Initializing driving dataset...")
     dataset = BaseDataset(
         split="train",
@@ -103,6 +106,30 @@ if __name__ == "__main__":
             for path_bytes in tqdm(dataset_dreamer.alternative_trajectories, desc="Dreamer"):
                 path = str(path_bytes, encoding='utf-8')
                 safe_put(txn, path.encode(), path)
+
+            # 7. Dreamer dataset has different samples - store its images/boxes/measurements too
+            # (safe_put skips duplicates, so overlapping files won't be stored twice)
+            print("Storing dreamer dataset images...")
+            for sample_images in tqdm(dataset_dreamer.images, desc="Dreamer Images"):
+                for path_bytes in sample_images:
+                    path = str(path_bytes, encoding="utf-8")
+                    safe_put(txn, path.encode(), path)
+                    aug_path = path.replace("rgb", "rgb_augmented")
+                    safe_put(txn, aug_path.encode(), aug_path)
+
+            print("Storing dreamer dataset boxes...")
+            for sample_boxes in tqdm(dataset_dreamer.boxes, desc="Dreamer Boxes"):
+                for path_bytes in sample_boxes:
+                    path = str(path_bytes, encoding='utf-8')
+                    safe_put(txn, path.encode(), path)
+
+            print("Storing dreamer dataset measurements...")
+            for idx in tqdm(range(len(dataset_dreamer)), desc="Dreamer Measurements"):
+                meas_dir = str(dataset_dreamer.measurements[idx, 0], encoding='utf-8')
+                sample_start = dataset_dreamer.sample_start[idx]
+                for i in range(dataset_dreamer.hist_len + dataset_dreamer.pred_len):
+                    meas_path = f"{meas_dir}/{(sample_start + i):04}.json.gz"
+                    safe_put(txn, meas_path.encode(), meas_path)
 
     print("Creating LMDB dataset finished")
 
