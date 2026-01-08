@@ -367,6 +367,9 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
         return f"{repo_path}/{path_value}"
 
     def _get_cache(self):
+        """
+        diskcache implementation
+        """
         cache = getattr(self, "data_cache", None)
         if cache is not None:
             return cache
@@ -385,6 +388,9 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
         return cache
 
     def _load_json_gz(self, file_path, allow_missing=False, allow_decode_error=False, cache_key_prefix="json_gz"):
+        """
+        diskcache implementation
+        """
         cache = self._get_cache()
         cache_key = f"{cache_key_prefix}:{file_path}"
         if cache is not None:
@@ -413,6 +419,9 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
         return data
 
     def _load_image_cached(self, image_path):
+        """
+        diskcache implementation
+        """
         cache = self._get_cache()
         cache_key = f"image:{image_path}"
         if cache is not None:
