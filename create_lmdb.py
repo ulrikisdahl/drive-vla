@@ -59,87 +59,86 @@ if __name__ == "__main__":
     lmdb_path = "/cluster/projects/vc/data/ad/open/write-folder/simlingo/lmdb_dataset"
     COMMIT_EVERY = 250000  # Commit every N files
 
-    env = lmdb.open(lmdb_path, map_size=500*1024**3)
+    env = lmdb.open(lmdb_path, map_size=1600*1024**3)
     # Use mutable container to allow modification in nested function
     state = {"txn": env.begin(write=True), "write_count": 0}
 
     def safe_put(key, filepath):
-        """Store file in LMDB if it exists and not already stored."""
-        if state["txn"].get(key) is not None:
-            return  # Already stored
-        if not os.path.exists(filepath):
-            return  # File doesn't exist
-        state["txn"].put(key, open(filepath, 'rb').read())
-        state["write_count"] += 1
+        try:
+            with open(filepath, "rb") as f:
+                data = f.read()
+        except FileNotFoundError:
+            return
+        try:
+            state["txn"].put(key, data, overwrite=False)
+            state["write_count"] += 1
+        except lmdb.KeyExistError:
+            return
+
         if state["write_count"] % COMMIT_EVERY == 0:
             state["txn"].commit()
             state["txn"] = env.begin(write=True)
             print(f"  Committed {state['write_count']} files...")
 
-    # 1. Images: rgb and rgb_augmented
-    print("Storing images...")
-    for sample_images in tqdm(dataset.images, desc="Images"):
-        for path_bytes in sample_images:
-            path = str(path_bytes, encoding="utf-8")
-            safe_put(path.encode(), path)
-
-            aug_path = path.replace("rgb", "rgb_augmented")
-            safe_put(aug_path.encode(), aug_path)
-
-    # 2. Boxes
-    print("Storing boxes...")
-    for sample_boxes in tqdm(dataset.boxes, desc="Boxes"):
-        for path_bytes in sample_boxes:
-            path = str(path_bytes, encoding='utf-8')
-            safe_put(path.encode(), path)
-
-    # 3. Measurements + 4. Commentary + 5. QA/VQA
-    print("Storing measurements, commentary, and QA...")
-    for idx in tqdm(range(len(dataset)), desc="Measurements/Commentary/QA"):
+    # Collect unique route directories from both datasets
+    print("Collecting unique route directories...")
+    route_dirs = set()
+    for idx in range(len(dataset)):
         meas_dir = str(dataset.measurements[idx, 0], encoding='utf-8')
-        sample_start = dataset.sample_start[idx]
-
-        for i in range(dataset.hist_len + dataset.pred_len):
-            # Measurement file
-            meas_path = f"{meas_dir}/{(sample_start + i):04}.json.gz"
-            safe_put(meas_path.encode(), meas_path)
-
-            # Commentary file (derived from measurement path)
-            commentary_path = meas_path.replace('measurements', 'commentary').replace('data/', 'commentary/')
-            safe_put(commentary_path.encode(), commentary_path)
-
-            # QA/VQA file (derived from measurement path)
-            qa_path = meas_path.replace('measurements', 'vqa').replace('data/', 'drivelm/')
-            safe_put(qa_path.encode(), qa_path)
-
-    # 6. Dreamer alternative trajectories
-    print("Storing dreamer trajectories...")
-    for path_bytes in tqdm(dataset_dreamer.alternative_trajectories, desc="Dreamer"):
-        path = str(path_bytes, encoding='utf-8')
-        safe_put(path.encode(), path)
-
-    # 7. Dreamer dataset has different samples - store its images/boxes/measurements too
-    print("Storing dreamer dataset images...")
-    for sample_images in tqdm(dataset_dreamer.images, desc="Dreamer Images"):
-        for path_bytes in sample_images:
-            path = str(path_bytes, encoding="utf-8")
-            safe_put(path.encode(), path)
-            aug_path = path.replace("rgb", "rgb_augmented")
-            safe_put(aug_path.encode(), aug_path)
-
-    print("Storing dreamer dataset boxes...")
-    for sample_boxes in tqdm(dataset_dreamer.boxes, desc="Dreamer Boxes"):
-        for path_bytes in sample_boxes:
-            path = str(path_bytes, encoding='utf-8')
-            safe_put(path.encode(), path)
-
-    print("Storing dreamer dataset measurements...")
-    for idx in tqdm(range(len(dataset_dreamer)), desc="Dreamer Measurements"):
+        # Get route dir (parent of measurements/)
+        route_dir = os.path.dirname(meas_dir)
+        route_dirs.add(route_dir)
+    for idx in range(len(dataset_dreamer)):
         meas_dir = str(dataset_dreamer.measurements[idx, 0], encoding='utf-8')
-        sample_start = dataset_dreamer.sample_start[idx]
-        for i in range(dataset_dreamer.hist_len + dataset_dreamer.pred_len):
-            meas_path = f"{meas_dir}/{(sample_start + i):04}.json.gz"
-            safe_put(meas_path.encode(), meas_path)
+        route_dir = os.path.dirname(meas_dir)
+        route_dirs.add(route_dir)
+    print(f"Found {len(route_dirs)} unique routes")
+
+    # For each route, store all files in rgb/, rgb_augmented/, boxes/, measurements/
+    # and derived commentary/QA paths
+    for route_dir in tqdm(route_dirs, desc="Routes"):
+        # 1. Images: rgb and rgb_augmented
+        rgb_dir = os.path.join(route_dir, "rgb")
+        rgb_aug_dir = os.path.join(route_dir, "rgb_augmented")
+        if os.path.isdir(rgb_dir):
+            for filename in os.listdir(rgb_dir):
+                rgb_path = os.path.join(rgb_dir, filename)
+                safe_put(rgb_path.encode(), rgb_path)
+                # Augmented version
+                aug_path = os.path.join(rgb_aug_dir, filename)
+                safe_put(aug_path.encode(), aug_path)
+
+        # 2. Boxes
+        boxes_dir = os.path.join(route_dir, "boxes")
+        if os.path.isdir(boxes_dir):
+            for filename in os.listdir(boxes_dir):
+                box_path = os.path.join(boxes_dir, filename)
+                safe_put(box_path.encode(), box_path)
+
+        # 3. Measurements + 4. Commentary + 5. QA/VQA
+        meas_dir = os.path.join(route_dir, "measurements")
+        if os.path.isdir(meas_dir):
+            for filename in os.listdir(meas_dir): #NOTE: This code assumes that measurements is the superset (none of the other directories have MORE filenames in them)
+                if not filename.endswith('.json.gz'):
+                    continue
+                meas_path = os.path.join(meas_dir, filename) 
+                safe_put(meas_path.encode(), meas_path)
+
+                # Commentary (derived path)
+                commentary_path = meas_path.replace('measurements', 'commentary').replace('data/', 'commentary/')
+                safe_put(commentary_path.encode(), commentary_path)
+
+                # QA/VQA (derived path)
+                qa_path = meas_path.replace('measurements', 'vqa').replace('data/', 'drivelm/')
+                safe_put(qa_path.encode(), qa_path)
+
+        # 6. Dreamer trajectories 
+        dreamer_dir = route_dir.replace('data/', 'dreamer/') + '/dreamer'
+        if os.path.isdir(dreamer_dir):
+            for filename in os.listdir(dreamer_dir):
+                if filename.endswith('.json.gz'):
+                    dreamer_path = os.path.join(dreamer_dir, filename)
+                    safe_put(dreamer_path.encode(), dreamer_path)
 
     # Final commit
     state["txn"].commit()
