@@ -63,22 +63,39 @@ if __name__ == "__main__":
     # Use mutable container to allow modification in nested function
     state = {"txn": env.begin(write=True), "write_count": 0}
 
-    def safe_put(key, filepath):
-        try:
-            with open(filepath, "rb") as f:
-                data = f.read()
-        except FileNotFoundError:
-            return
-        try:
-            state["txn"].put(key, data, overwrite=False)
-            state["write_count"] += 1
-        except lmdb.KeyExistError:
-            return
+    def safe_put(key, filepath): 
+        """
+        Store file in LMDB if it exists and not already stored.
+        This safe_put version is slightly faster for existing files and slightly slower for new files
+        """ 
+        if state["txn"].get(key) is not None: 
+            return # Already stored 
+        if not os.path.exists(filepath): 
+            return # File doesn't exist 
+        state["txn"].put(key, open(filepath, 'rb').read()) 
+        state["write_count"] += 1 
+        if state["write_count"] % COMMIT_EVERY == 0: 
+            state["txn"].commit() 
+            state["txn"] = env.begin(write=True) 
+            print(f" Committed {state['write_count']} files...")
 
-        if state["write_count"] % COMMIT_EVERY == 0:
-            state["txn"].commit()
-            state["txn"] = env.begin(write=True)
-            print(f"  Committed {state['write_count']} files...")
+    # def safe_put(key, filepath):
+    #     try:
+    #         with open(filepath, "rb") as f:
+    #             data = f.read()
+    #     except FileNotFoundError:
+    #         return
+    #     try:
+    #         state["txn"].put(key, data, overwrite=False)
+    #         state["write_count"] += 1
+    #     except lmdb.KeyExistError:
+    #         print("EXISTS")
+    #         return
+
+    #     if state["write_count"] % COMMIT_EVERY == 0:
+    #         state["txn"].commit()
+    #         state["txn"] = env.begin(write=True)
+    #         print(f"  Committed {state['write_count']} files...")
 
     # Collect unique route directories from both datasets
     print("Collecting unique route directories...")
