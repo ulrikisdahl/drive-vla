@@ -202,6 +202,7 @@ class DataModule(LightningDataModule):
             collate_fn=self.dl_collate_fn,
             sampler=self.sampler_train,
             pin_memory=True,
+            multiprocessing_context='fork',
         )
 
     def predict_dataloader(self):
@@ -213,6 +214,7 @@ class DataModule(LightningDataModule):
             drop_last=True,
             collate_fn=self.dl_collate_fn,
             pin_memory=True,
+            multiprocessing_context='fork',
         )
 
     def val_dataloader(self):
@@ -224,6 +226,7 @@ class DataModule(LightningDataModule):
             drop_last=True,
             collate_fn=self.dl_collate_fn,
             pin_memory=True,
+            multiprocessing_context='fork',
         )
 
 
