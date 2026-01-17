@@ -47,13 +47,17 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
         if self.data_cache is not None and not hasattr(self, "data_cache_dir"):
             self.data_cache_dir = self.data_cache.directory
 
-        # Initialize LMDB if enabled
+        # Initialize LMDB if enabled (skip if preload_to_ram is enabled)
         self.lmdb_env = None
         self.lmdb_txn = None
-        if getattr(self, "use_lmdb", False) and getattr(self, "lmdb_path", ""):
+        if getattr(self, "use_lmdb", False) and getattr(self, "lmdb_path", "") and not getattr(self, "preload_to_ram", False):
             import lmdb
             self.lmdb_env = lmdb.open(self.lmdb_path, readonly=True, lock=False, readahead=True, meminit=False)
             self.lmdb_txn = self.lmdb_env.begin(buffers=True)
+
+        # Initialize RAM cache (populated later if preload_to_ram is True)
+        self.ram_cache = {}
+        self.use_ram_cache = False
 
         self.tfs = image_augmenter(prob=self.img_augmentation_prob)
 
@@ -213,7 +217,7 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
         
 
         random.shuffle(route_dirs)
-        split_percentage = 0.99
+        split_percentage = 0.99 # should be 0.99
         if dreamer or not self.use_town13:
             # split the data into official training(Town12 and old Towns) and validation set (Town13)
             if self.split == "train":
@@ -365,6 +369,65 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
         print('Perfect routes:', perfect_routes)
         print('Fail reasons:', fail_reasons)
 
+        # Preload all files to RAM if enabled
+        if getattr(self, "preload_to_ram", False):
+            self._preload_to_ram(dreamer)
+
+    def _preload_to_ram(self, dreamer):
+        """Preload all dataset files into RAM as raw bytes."""
+        print("Preloading dataset to RAM...")
+
+        # Collect unique file paths
+        file_paths = set()
+
+        for idx in tqdm(range(len(self.images)), desc="Collecting file paths"):
+            # Images (rgb and rgb_augmented)
+            for i in range(self.images.shape[1]):
+                img_path = str(self.images[idx, i], encoding='utf-8')
+                file_paths.add(img_path)
+                # Augmented version
+                aug_path = img_path.replace('/rgb/', '/rgb_augmented/')
+                file_paths.add(aug_path)
+
+            # Boxes
+            for i in range(self.boxes.shape[1]):
+                box_path = str(self.boxes[idx, i], encoding='utf-8')
+                file_paths.add(box_path)
+
+            # Measurements
+            for i in range(self.measurements.shape[1]):
+                meas_path = str(self.measurements[idx, i], encoding='utf-8')
+                file_paths.add(meas_path)
+                # Commentary (derived path)
+                commentary_path = meas_path.replace('measurements', 'commentary').replace('data/', 'commentary/')
+                file_paths.add(commentary_path)
+                # QA/VQA (derived path)
+                qa_path = meas_path.replace('measurements', 'vqa').replace('data/', 'drivelm/')
+                file_paths.add(qa_path)
+
+            # Dreamer trajectories
+            if dreamer and hasattr(self, 'alternative_trajectories') and len(self.alternative_trajectories) > 0:
+                for i in range(self.alternative_trajectories.shape[1]):
+                    traj_path = str(self.alternative_trajectories[idx, i], encoding='utf-8')
+                    file_paths.add(traj_path)
+
+        print(f"Found {len(file_paths)} unique file paths")
+
+        # Load files into RAM
+        loaded = 0
+        skipped = 0
+        for file_path in tqdm(file_paths, desc="Loading files to RAM"):
+            try:
+                with open(file_path, 'rb') as f:
+                    self.ram_cache[file_path] = f.read()
+                loaded += 1
+            except FileNotFoundError:
+                skipped += 1
+
+        ram_usage_gb = sum(len(v) for v in self.ram_cache.values()) / (1024**3)
+        print(f"Preloaded {loaded} files to RAM ({ram_usage_gb:.2f} GB), skipped {skipped} missing files")
+        self.use_ram_cache = True
+
     def __len__(self):
         """Returns the length of the dataset. """
         return self.images.shape[0]
@@ -397,9 +460,13 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
 
     def _load_json_gz(self, file_path, allow_missing=False, allow_decode_error=False, cache_key_prefix="json_gz"):
         """
-        Load gzipped JSON file from LMDB, diskcache, or filesystem.
+        Load gzipped JSON file from RAM cache, LMDB, diskcache, or filesystem.
         """
-        # Try LMDB first
+        # Try RAM cache first (fastest)
+        if self.use_ram_cache and file_path in self.ram_cache:
+            return ujson.loads(gzip.decompress(self.ram_cache[file_path]))
+
+        # Try LMDB next
         if self.lmdb_txn is not None:
             data = self.lmdb_txn.get(file_path.encode())
             if data is not None:
@@ -439,9 +506,16 @@ class BaseDataset(Dataset):  # pylint: disable=locally-disabled, invalid-name
 
     def _load_image_cached(self, image_path):
         """
-        Load image from LMDB, diskcache, or filesystem.
+        Load image from RAM cache, LMDB, diskcache, or filesystem.
         """
-        # Try LMDB first
+        # Try RAM cache first (fastest)
+        if self.use_ram_cache and image_path in self.ram_cache:
+            image_bytes = np.frombuffer(self.ram_cache[image_path], dtype=np.uint8)
+            decoded = cv2.imdecode(image_bytes, cv2.IMREAD_COLOR)
+            if decoded is not None:
+                return cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB)
+
+        # Try LMDB next
         if self.lmdb_txn is not None:
             data = self.lmdb_txn.get(image_path.encode())
             if data is not None:

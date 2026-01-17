@@ -85,6 +85,9 @@ class DatasetBaseConfig:
     use_lmdb: bool = False
     lmdb_path: str = ""
 
+    # RAM preloading options
+    preload_to_ram: bool = False
+
 @dataclass
 class DrivingDatasetConfig:
     # base: DatasetBaseConfig = field(default_factory=DatasetBaseConfig)

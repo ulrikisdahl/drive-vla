@@ -30,7 +30,7 @@ data_module:
     use_qa: True
     qa_augmentation: True
     img_shift_augmentation: True
-    img_shift_augmentation_prob: 0.5
+    img_shift_augmentation_prob: 0.5  
     hist_len: 1
     route_as: target_point_command
     use_lmdrive_commands: True
@@ -40,7 +40,7 @@ data_module:
     use_safety_flag: True
 
     use_lmdb: True
-    lmdb_path: /path/to/dataset
+    lmdb_path: /cluster/projects/vc/data/ad/open/write-folder/simlingo/lmdb_dataset
 
 max_epochs: 15
 val_every_n_epochs: 3
