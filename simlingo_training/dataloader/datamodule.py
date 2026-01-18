@@ -170,6 +170,16 @@ class DataModule(LightningDataModule):
                     print(f"Num samples all: {datasets['all'].__len__()}")
                 self.sampler_train = torch.utils.data.WeightedRandomSampler(weights=weights_train, num_samples=num_samples, replacement=True)
 
+                # Debug: write sampler info to file
+                with open("/cluster/home/ulrikyi/simlingo/sampler_debug.txt", "w") as f:
+                    f.write(f"num_samples: {num_samples}\n")
+                    f.write(f"num_samples_all: {num_samples_all}\n")
+                    f.write(f"len(weights_train): {len(weights_train)}\n")
+                    f.write(f"bucket_list: {bucket_list}\n")
+                    f.write(f"sample_weights: {sample_weights}\n")
+                    for i, bucket in enumerate(bucket_list):
+                        f.write(f"  {bucket}: {datasets[bucket].__len__()} samples\n")
+
             self.val_dataset = torch.utils.data.ConcatDataset(self.val_datasets)
             self.predict_dataset = None
 
