@@ -100,6 +100,18 @@ class DrivingModel(pl.LightningModule):
         else:
             self.tokenizer = self.processor
 
+        self._torch_profiler = None
+        self._torch_profiler_step = 0
+        self._enable_torch_profiler = bool(int(os.getenv("SIMLINGO_PROFILE", "0")))
+        self._torch_profiler_ranks = os.getenv("SIMLINGO_PROFILE_RANKS", "0")
+        self._torch_profiler_dir = os.getenv("SIMLINGO_PROFILE_DIR", "tb_profiler")
+        self._torch_profiler_warmup = int(os.getenv("SIMLINGO_PROFILE_WARMUP", "2"))
+        self._torch_profiler_active = int(os.getenv("SIMLINGO_PROFILE_ACTIVE", "5"))
+        self._torch_profiler_repeat = int(os.getenv("SIMLINGO_PROFILE_REPEAT", "1"))
+        self._torch_profiler_record_shapes = bool(int(os.getenv("SIMLINGO_PROFILE_RECORD_SHAPES", "0")))
+        self._torch_profiler_with_stack = bool(int(os.getenv("SIMLINGO_PROFILE_WITH_STACK", "0")))
+        self._torch_profiler_profile_memory = bool(int(os.getenv("SIMLINGO_PROFILE_PROFILE_MEMORY", "0")))
+
 
     def forward(self,
         example: DrivingExample,
@@ -261,6 +273,29 @@ class DrivingModel(pl.LightningModule):
         return summarise_losses(loss_dict_only_losses), loss_logs
 
     def training_step(self, batch: DrivingExample, _batch_idx: int = 0):
+        if self._enable_torch_profiler:
+            rank_ok = (self._torch_profiler_ranks == "all") or (str(self.global_rank) in self._torch_profiler_ranks.split(","))
+            if rank_ok and self._torch_profiler is None:
+                activities = [torch.profiler.ProfilerActivity.CPU]
+                if torch.cuda.is_available():
+                    activities.append(torch.profiler.ProfilerActivity.CUDA)
+                trace_dir = os.path.join(self._torch_profiler_dir, f"rank{self.global_rank}")
+                os.makedirs(trace_dir, exist_ok=True)
+                self._torch_profiler = torch.profiler.profile(
+                    activities=activities,
+                    schedule=torch.profiler.schedule(
+                        wait=0,
+                        warmup=self._torch_profiler_warmup,
+                        active=self._torch_profiler_active,
+                        repeat=self._torch_profiler_repeat,
+                    ),
+                    on_trace_ready=torch.profiler.tensorboard_trace_handler(trace_dir),
+                    record_shapes=self._torch_profiler_record_shapes,
+                    with_stack=self._torch_profiler_with_stack,
+                    profile_memory=self._torch_profiler_profile_memory,
+                )
+                self._torch_profiler.start()
+
         output, loss_logs = self.forward_loss(batch)
         logs = output #.update(loss_logs)
         self.log_training_output(logs, "train")
@@ -268,7 +303,15 @@ class DrivingModel(pl.LightningModule):
         # log the loss
         self.log("train/loss", output.loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
+        if self._torch_profiler is not None:
+            self._torch_profiler.step()
+            self._torch_profiler_step += 1
+
         return {"loss": output.loss, "outputs": output}
+
+    def on_train_end(self):
+        if self._torch_profiler is not None:
+            self._torch_profiler.stop()
 
 
     def validation_step(self, batch: DrivingExample, _batch_idx: int = 0):
